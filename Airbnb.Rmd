@@ -1,0 +1,275 @@
+---
+title: "AirBnB Data Analysis for Paris"
+author: "Rudy Desplan"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+## Dataset Overviews
+
+The dataset utilized for this analysis is sourced from AirBnB listings in Paris.
+It contains a wealth of information (95 variables) related to both the listing and the host.
+
+### Listing Details
+- **General Information**: Includes listing ID, name, summary, description, and space details.
+- **Property Characteristics**: Encompasses property type, room type, bed type, and the number of people it accommodates.
+- **Pricing Structure**: Covers not just the base price but also weekly and monthly rates, security deposits, and cleaning fees.
+- **Amenities and Features**: Details on amenities provided, square footage, and even the type of bed are included.
+  
+### Host Information
+- **Identification**: Host ID, name, and verification status.
+- **Profile**: Information about the host, such as their location, 'About Me' section, and how long they've been a host.
+- **Performance Metrics**: Metrics like response time, response rate, and whether they're a superhost.
+  
+### Geographical Data
+- **Location Information**: Includes not just the city and state, but also the neighborhood, zip code, and precise latitude and longitude coordinates.
+  
+### Review and Rating Information
+- **Review Metrics**: Comprehensive review metrics covering aspects from cleanliness to communication.
+- **Review Dates**: First and last review dates, along with the number of reviews per month.
+  
+### Availability and Booking
+- **Availability**: How many days a listing is available for booking over different periods (30, 60, 90, 365 days).
+- **Booking Requirements**: Policies around cancellations, guest profile pictures, and phone verification.
+
+### Miscellaneous
+- **Legal and Compliance**: Information on licenses, jurisdictions, and whether the listing requires a license.
+
+## Objectives of the Shiny Application
+
+The Shiny application aims to distill this rich dataset into actionable insights through a user-friendly interface. The specific objectives include:
+
+1. **Relationship between Prices and Apartment Features**: Explore how various attributes influence pricing.
+2. **Number of Apartments per Owner**: Gain an overview of property distribution among hosts.
+3. **Renting Price per City Quarter (`arrondissement`)**: Understand geographical pricing trends.
+4. **Visit Frequency of Different Quarters**: Examine how visitation varies across different parts of the city over time.
+
+# Data Loading and Preprocessing
+
+The data was initially loaded from an .Rdata file. In the preprocessing steps, several key actions were taken.
+
+## Data Loading
+
+The dataset was loaded into the R environment using the `load()` function. Given the dataset's extensive list of 95 variables, the first order of business was to scrutinize these variables to understand their structure, type, and potential relevance to our analysis objectives.
+
+```{r data-loading, echo=TRUE}
+# Load the dataset
+load("C:/Users/rudy.desplan/Downloads/R/AirBnB (1).Rdata")
+```
+
+
+## Column Filtering
+
+
+The dataset was pruned to retain only the columns that were pertinent to the analysis.
+Out of the 95 variables, only those deemed directly relevant to the analysis were retained.
+This was done to make the dataset more manageable and focused. The columns retained were those relating to:
+
+- Property details (e.g., property_type, room_type, bed_type)
+- Pricing (e.g., price, weekly_price, monthly_price)
+- Reviews and Ratings (e.g., number_of_reviews, review_scores_rating)
+- Geographical information (e.g., zipcode, neighbourhood_cleansed)
+
+```{r column-filtering, echo=TRUE}
+# Load the dataset
+L <- L[, c("id", "host_id", "description", "minimum_nights", "price",
+    "weekly_price", "monthly_price",
+    "cleaning_fee", "zipcode", "property_type", "room_type", "bed_type",
+    "accommodates", "bathrooms", "bedrooms", "beds",
+    "guests_included", "neighbourhood_cleansed", "amenities", "number_of_reviews",
+    "review_scores_rating","review_scores_accuracy", "review_scores_cleanliness",
+    "review_scores_checkin","review_scores_communication","review_scores_location",
+    "review_scores_value")]
+```
+
+## Data Type Conversion
+
+Several columns required type conversion.
+For instance, the price, weekly_price, and monthly_price were stored as text and needed to be converted to numeric types for analysis.
+This involved stripping the currency symbols and converting the text to numbers.
+
+```{r datatype-;converting, echo=TRUE}
+# Convert from factor to numeric in L
+L$price <- as.numeric(gsub("[$,]", "", as.character(L$price)))
+L$weekly_price <- as.numeric(gsub("[$,]", "", as.character(L$weekly_price)))
+L$monthly_price <- as.numeric(gsub("[$,]", "", as.character(L$monthly_price)))
+L$cleaning_fee <- as.numeric(gsub("[$,]", "", as.character(L$cleaning_fee)))
+```
+
+## Feature Engineering
+
+To derive more insights from the dataset, new features were engineered based on existing columns:
+
+### Number of Amenities
+
+A new column called `number_amenities` was created to capture the number of amenities offered by each property. This involved parsing the `amenities` column, which was initially stored as a string containing various amenities separated by commas.
+
+```{r number-amenities, echo=TRUE}
+# Create a new column 'number_amenities' based on the 'amenities' column
+L$number_amenities <- sapply(strsplit(gsub("[{}\"]", "", L$amenities), ","), length)
+```
+
+### Length of Description
+
+Similarly, a new column called length_of_description was created to capture the length of the description provided for each property. The idea behind this was to investigate whether the length of the description has any correlation with factors like price.
+
+```{r length-description, echo=TRUE}
+# Create a new column 'number_amenities' based on the 'amenities' column
+L$length_of_description <- sapply(L$description, function(x) nchar(as.character(x)))
+```
+
+
+## Handling Missing Values
+
+```{r missing-values, echo=TRUE}
+# Check for missing values in L
+missing_values_by_column_L <- colSums(is.na(L))
+print(missing_values_by_column_L)                                      
+```
+
+For cleaning_fee, missing values were imputed with zero, assuming the absence of a cleaning fee.
+
+For the rest of the missing values, they were left as is to avoid introducing bias
+
+
+# Exploratory Data Analysis
+
+Before diving into the Shiny app development, an initial exploratory analysis was carried out to understand the key aspects of the AirBnB dataset and identify potential areas for detailed examination.
+The EDA consisted of the following components:
+
+## Relationship Between Prices and Apartment Features
+
+The objective was to assess how various features like `room_type`, `bed_type`, `number_amenities`, and `length_of_description` correlate with the pricing (`price` and `cleaning_fee`) of listings.
+
+This helped us understand which features were strongly associated with pricing, thereby guiding the feature selection in the Shiny app.
+
+## Number of Apartments Per Owner
+
+The dataset was grouped by host_id to identify hosts with multiple listings. This analysis provided insights into the distribution of properties among hosts.
+
+## Renting Price Per City Quarter ("Arrondissements")
+
+The average renting price per city quarter was calculated by grouping the data by neighbourhood_cleansed.
+
+
+## Visit Frequency of Different Quarters Over Time
+
+A time-series analysis was performed to understand the visit frequency in different city quarters.
+This was done by merging the main listings data with the reviews data.
+
+
+These exploratory steps were instrumental in shaping the analytical features of the Shiny app, ensuring that each component would contribute meaningfully to our understanding of AirBnB listings in Paris.
+
+# Shiny Application Description
+
+The Shiny application serves as an interactive tool for exploring the AirBnB listings in Paris. It focuses on four key areas, each designed to offer valuable insights into different aspects of the listings.
+
+## 1. Relationship Between Prices and Apartment Features
+
+### Objective:
+
+To explore how various apartment features influence the listing price.
+
+### Implementation:
+
+The app allows users to select multiple features such as `room_type`, `bed_type`, `number_amenities`, and `length_of_description`. A correlation matrix is dynamically generated to depict how these features correlate with the price. Additionally, users can select a specific feature to visualize its relationship with the price through a scatter plot.
+
+
+## 2. Number of Apartments Per Owner
+
+### Objective:
+
+To identify how many apartments are listed by each owner and explore any patterns or trends.
+
+### Implementation:
+
+Users can filter the data based on a minimum and maximum number of apartments owned.
+The output is a table that shows each host_id along with the number of apartments they own, filtered by the selected property type.
+
+
+## 3. Renting Price Per City Quarter ("Arrondissements")
+
+### Objective:
+
+To investigate the average renting price across different city quarters in Paris.
+
+### Implementation:
+
+Users can select multiple city quarters for which they wish to see the average renting price. The application then generates a bar graph that displays the average price for the selected quarters.
+
+
+## 4. Visit Frequency of Different Quarters Over Time
+
+### Objective:
+
+To analyze the popularity of different city quarters over time based on visitor frequency.
+
+### Implementation:
+
+Users can select a date range and specific city quarters to explore. The app then plots a time-series graph that shows the number of visits for the selected quarters within the given date range.
+
+
+#Statistical Analysis and Personal Comments
+
+```{r statistical-analysis, echo=TRUE}
+summary_result_L <- summary(L)
+print(summary_result_L)                                      
+```
+
+## Scientific Comments on the Data Based on Statistical Results
+
+### Listing Price Distribution
+
+The price variable seems to be positively skewed, given that the mean (around $73) is higher than the median ($70).
+This suggests that there are listings with extremely high prices pulling the mean upwards
+
+### Minimum Nights
+
+The 'minimum_nights' feature ranges from 1 to 1000, but 75% of the listings require a minimum stay of only 3 nights or fewer.
+
+The maximum value of 1000 nights appears to be an outlier.
+
+### Property and Room Types
+
+The dataset is dominated by apartments (50,663 out of 52,725 listings), and the most common type of rental is an entire home/apt.
+This could point to a market that favors entire property rentals over shared spaces.
+
+### Amenities
+
+The 'amenities' feature has a broad range of values, with some listings even having no amenities ({}).
+
+### Reviews
+
+The 'number_of_reviews' has a mean of around 12.6, but the median is just 3, indicating a positive skew.
+This suggests that while a few listings get a lot of reviews, most get very few.
+
+###  Geographical Information
+
+The 'neighbourhood_cleansed' shows that listings are not evenly distributed across neighborhoods.
+Some areas like Buttes-Montmartre and Popincourt have more listings.
+
+### Accommodation Capacity
+
+Most listings accommodate two guests, but there is a wide range, with some listings accommodating up to 16 guests.
+
+# Conclusion
+
+1 - Data Complexity: The dataset is rich and requires careful selection and transformation of variables for meaningful analysis.
+
+2 - Impact of Features on Price: A multidimensional approach is needed to understand the various factors affecting the listing price.
+
+3 - The Importance of Geographical Data: Location-based insights are invaluable for both hosts and renters.
+
+4 - Handling Missing Data: The strategy for dealing with missing values can significantly impact the analysis outcomes.
+
+5 - User Behavior: Features like the number of amenities and the length of the description can offer indirect insights into what hosts think will attract guests and what guests actually find valuable.
+
+6 - Statistical Significance: A deeper statistical analysis would be beneficial to understand the distribution and significance of the variables, thereby validating the exploratory data analysis.
